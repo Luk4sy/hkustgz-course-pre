@@ -7,9 +7,13 @@ Checks, per slide:
   - the slide has speaker notes
 Checks for the whole deck:
   - spoken time (English note words / wpm) fits in 90% of the time limit
-Exit code 1 if anything fails, so it can run in a script.
+Compatibility warnings (PowerPoint + WPS):
+  - Chinese text without a Chinese East Asian font (run fix_fonts.py)
+  - images or video in formats one of the apps may not show (webp, svg, gif, heic; non-MP4 or non-H.264 video)
+  - file size over 100 MB
+Exit code 1 if anything fails, so it can run in a script. Warnings don't fail.
 """
-import argparse, re, sys, zipfile
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, zipfile
 
 ap = argparse.ArgumentParser()
 ap.add_argument("pptx")
@@ -61,6 +65,42 @@ if spoken > budget:
     problems.append(f"too long: cut about {(spoken - budget) * a.wpm:.0f} words")
 elif spoken < a.minutes * 0.55:
     print("note: well under the limit, check nothing is missing")
+
+# ---- compatibility warnings ----
+CJK_FONTS = {"Microsoft YaHei", "微软雅黑", "DengXian", "等线", "PingFang SC", "SimHei", "黑体", "SimSun", "宋体",
+             "Source Han Sans SC", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Serif SC", "KaiTi", "楷体",
+             "FangSong", "仿宋", "Hiragino Sans GB", "STHeiti", "STSong"}
+warnings = []
+for i, s in enumerate(slides, 1):
+    xml = z.read(s).decode("utf8")
+    if re.search(r"<a:t>[^<]*[\u4e00-\u9fff]", xml):
+        bad = {f for f in re.findall(r'<a:ea typeface="([^"]*)"', xml) if f not in CJK_FONTS and not f.startswith("+")}
+        if bad:
+            warnings.append(f"slide {i}: Chinese text may use non-Chinese font {sorted(bad)}; run fix_fonts.py")
+media = [n for n in names if n.startswith("ppt/media/")]
+for n in media:
+    ext = n.rsplit(".", 1)[-1].lower()
+    if ext in {"webp", "svg", "gif", "heic", "tif", "tiff"}:
+        warnings.append(f"{n}: .{ext} may not show in WPS or older PowerPoint; use PNG or JPG")
+    if ext in {"mov", "avi", "mkv", "wmv", "webm", "m4v"}:
+        warnings.append(f"{n}: .{ext} video; use MP4 (H.264) for both apps")
+    if ext == "mp4" and shutil.which("ffprobe"):
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as t:
+            t.write(z.read(n))
+        try:
+            info = json.loads(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                                              "stream=codec_name", "-of", "json", t.name],
+                                             capture_output=True, text=True).stdout or "{}")
+            codec = (info.get("streams") or [{}])[0].get("codec_name", "?")
+            if codec != "h264":
+                warnings.append(f"{n}: video codec {codec}; re-encode to H.264 for WPS")
+        finally:
+            os.unlink(t.name)
+size_mb = os.path.getsize(a.pptx) / 1e6
+if size_mb > 100:
+    warnings.append(f"file is {size_mb:.0f} MB; compress videos/images (large files open slowly in WPS)")
+if warnings:
+    print("\nWARNINGS (compatibility)"); [print(" -", w) for w in warnings]
 
 if problems:
     print("\nFAIL"); [print(" -", p) for p in problems]; sys.exit(1)
