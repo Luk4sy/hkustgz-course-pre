@@ -18,9 +18,11 @@ description: Plan and build HKUST(GZ) course presentation slides (.pptx) — pap
 1. **Understand → plan → build. Never skip ahead.** Do not write any slide code until the user explicitly says "开动" / "go" / "start building". Before that, only explain and plan.
 2. **Plain language first.** Explain the material as if to a smart friend outside the field: one-sentence version, an everyday analogy, then the details. If the user says "还是没讲清楚", simplify again; do not add jargon.
 3. **Reply in the user's language** (usually Chinese). Slides and script can be English; the default is English slides with bilingual EN + ZH notes.
-4. **Respect the time limit.** About 140 words per minute of spoken English. An 8-minute talk is about 1,100 words and 10–13 slides.
+4. **Respect the time limit.** About 140 words per minute of spoken English. Plan the spoken part to fill at most **90% of the slot**, leaving room for clicks, a slow start and nerves. An 8-minute talk is about 1,000 words and 9–12 slides.
 5. **When the user asks for text only ("发给我就行"), send the text and do not edit files.**
 6. **Never download copyrighted video from YouTube or similar sites.** Ask the user to screen-record the clip and upload it.
+7. **No unsourced facts.** Every number or claim on a slide or in the notes comes from the user's material or a source you opened. If something is unknown, say so; don't fill the gap.
+8. **Keep private details out.** Course requirements are given by the user each time; don't store instructor or classmate information in the skill.
 
 ## Step 1 — Collect the brief
 
@@ -42,7 +44,19 @@ Ask (with AskUserQuestion) only what is missing:
 
 ## Step 3 — Plan the talk (no slides yet)
 
-Produce a slide-by-slide outline: slide title, the one message of that slide, visual (figure / diagram / video / table), seconds allotted. Follow the matching playbook. Agree on it with the user, then wait for "开动".
+Produce the plan as one table, one row per slide, following the matching playbook:
+
+| # | Slide ID | Audience sees | I say (3–5 points) | Time | Transition to next |
+|---|---|---|---|---|---|
+| 1 | `cover` | title, authors, venue, video | who / what / why it matters | 0:40 | "So what problem are they solving?" |
+
+- **Slide ID**: a short stable slug (`cover`, `motivation`, `method`, `results-energy`, `verdict`), never a page number. Notes and build code are keyed by it, so reordering slides can't attach notes to the wrong page.
+- **Audience sees** is what is on the slide; **I say** is what only the speaker adds. If the two columns say the same thing, the slide has too much text.
+- **Time** column total ≤ 90% of the limit; show the total under the table.
+- **Transition** is one spoken sentence that hands over to the next slide. Every row has one except the last.
+- Rhythm: no three dense slides in a row; a big-number, image or section slide every 3–4 slides.
+
+Agree on the table with the user, then wait for "开动". The notes are written from the "I say" and "Transition" columns.
 
 ## Playbooks
 
@@ -107,6 +121,7 @@ node build.js                                   # -> deck.pptx
 python scripts/animate.py deck.pptx deck_anim.pptx [--video-ms 5000]
 python scripts/fixnotes.py deck_anim.pptx deck_notes.pptx
 python scripts/add_logo.py deck_notes.pptx final.pptx --color logo_color.png --white logo_white.png
+python scripts/check_deck.py final.pptx --minutes 8
 ```
 
 Never pipe these scripts into `head`; a broken pipe can truncate the output file.
@@ -115,12 +130,33 @@ Never pipe these scripts into `head`; a broken pipe can truncate the output file
 
 - Render: `soffice --headless --convert-to pdf`, then `pdftoppm -r 50` and check a contact sheet for overflow, overlap and the logo on every slide.
 - Run the pptx skill's `validate.py`. If it reports an undeclared `jpg` extension, add `<Default Extension="jpg" ContentType="image/jpeg"/>` to `[Content_Types].xml`.
-- Script length: word count ÷ 140 ≈ minutes; must fit the limit.
-- `[CLICK]` count per slide = click groups per slide.
+- Run `python scripts/check_deck.py final.pptx --minutes <limit>`. It fails if a slide's `[CLICK]` markers don't match its click steps, a slide has no notes, or the spoken time is over 90% of the limit (it says how many words to cut).
 - Instructor's required items are on the opening slides.
 
 ## Step 6 — Deliver
 
 - Save the .pptx into the user's connected folder (or send it in chat).
 - Tell them how to use presenter mode (WPS: 放映 → 演讲者视图 / 设置放映方式 → 显示演讲者视图; PowerPoint: Slide Show → Use Presenter View).
-- Offer: notes as plain text, a rehearsal run-through, or a Q&A prep list.
+- Offer: notes as plain text, a rehearsal run-through, or Q&A prep (Step 7).
+
+## Step 7 — Q&A prep (offer after every deck; do it when asked)
+
+Predict the **5 most likely questions** for this talk and prepare an answer for each. Give them in the user's language, with the answer itself in the slide language.
+
+For each question give:
+
+- **The question**, phrased the way a classmate or the instructor would ask it.
+- **A 30-second answer**: the point first, then one piece of evidence.
+- **Where the evidence is**: the slide ID, or "not in the deck" (then suggest a backup slide).
+- **If you don't know**: one honest fallback sentence ("The paper doesn't report that; my guess is … because …").
+
+Where questions come from, by talk type:
+
+- **Author**: limitations you'd rather not discuss, baselines and comparisons, whether it generalizes, cost or practicality.
+- **Reviewer**: "Is your criticism fair?", "Would you accept it anyway?", "What experiment would fix it?" The audience tests the critique, not the paper.
+- **Researcher**: feasibility, why this metric or sample size, what if the result is negative, how it differs from the original paper.
+- **Project / proposal**: what you'd do with more time, why this approach over an obvious alternative, risks.
+- **Group**: who did which part; make sure each member can answer one question.
+- **Topic / case analysis**: the strongest counter-argument, a stakeholder you left out, whether the lesson transfers elsewhere.
+
+Mark the hardest question and offer one backup slide for it (placed after the closing slide, hidden from the main flow). Facts in answers follow principle 7: nothing unsourced.
