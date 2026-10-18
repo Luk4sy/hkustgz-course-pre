@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.pptx
+*.pdf
+*.mp4
+logo*.png
