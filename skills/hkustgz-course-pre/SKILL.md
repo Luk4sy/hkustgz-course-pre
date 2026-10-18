@@ -7,11 +7,13 @@ description: Plan and build HKUST(GZ) course presentation slides (.pptx) — pap
 
 ## 给使用者的一句话说明
 
-把作业要求和材料（论文、报告、数据、图片）交给 Claude。Claude 会先用大白话帮你讲懂内容，再和你一起定"这次 pre 怎么讲"。你说 **"开动"** 之后，它才做出一份能在 WPS / PowerPoint 演讲者模式里直接用的 .pptx。备注里有中英逐字稿，标好了每次该点击的地方。
+把作业要求和材料（论文、报告、数据、图片）交给 AI 助手（Claude、Codex 或 DeepSeek Harness 都可以）。它会先用大白话帮你讲懂内容，再和你一起定"这次 pre 怎么讲"。你说 **"开动"** 之后，它才做出一份能在 WPS / PowerPoint 演讲者模式里直接用的 .pptx。备注里有中英逐字稿，标好了每次该点击的地方。
 
 ---
 
 # Technical guide (for the assistant)
+
+This skill is written to work in any agent that reads `SKILL.md` and can run a shell: Claude (Claude Code / Cowork / claude.ai), OpenAI Codex and DeepSeek Harness (dsh). It does not depend on any other skill or on tools specific to one agent. Helper scripts are in `scripts/` next to this file; resolve their path from where this `SKILL.md` lives.
 
 ## Core principles
 
@@ -23,10 +25,20 @@ description: Plan and build HKUST(GZ) course presentation slides (.pptx) — pap
 6. **Never download copyrighted video from YouTube or similar sites.** Ask the user to screen-record the clip and upload it.
 7. **No unsourced facts.** Every number or claim on a slide or in the notes comes from the user's material or a source you opened. If something is unknown, say so; don't fill the gap.
 8. **Keep private details out.** Course requirements are given by the user each time; don't store instructor or classmate information in the skill.
+9. **Works in PowerPoint and WPS.** Every deck must open and present correctly in both. Follow the compatibility rules in Step 4; when in doubt, choose the simpler feature.
+
+## Step 0 — Check the environment (once per machine)
+
+Run `python scripts/check_env.py`. It lists what is installed and how to install what is missing (macOS, Windows, Linux).
+
+- Required: Python 3.8+ with `python-pptx`, `Pillow`, `numpy`; Node.js with `pptxgenjs`.
+- Optional: LibreOffice + poppler (previews, automatic logo colour), ffmpeg (video conversion and checks).
+- Without LibreOffice: skip rendered previews, pass `--dark <slide numbers>` to `add_logo.py`, and ask the user to look over the deck themselves.
+- If you cannot run commands at all, give the user the build script and the exact commands from Step 4 to run.
 
 ## Step 1 — Collect the brief
 
-Ask (with AskUserQuestion) only what is missing:
+Ask only what is missing (use a multiple-choice question tool if your environment has one, otherwise ask in plain text, one short list):
 
 - Course code and talk type (see playbooks below); time limit; solo or group (and which part is theirs).
 - Required items from the instructor. Some instructors want a fixed opening, e.g. **Title / Authors & Institution / Venue & Year / Intuition or Motivation** at the start of every talk; always honor these.
@@ -105,13 +117,20 @@ Hook → problem → solution → why it is credible (evidence) → one clear as
 
 ## Step 4 — Build the .pptx (only after "开动")
 
-Use the pptx skill (pptxgenjs, `LAYOUT_WIDE` 13.333 × 7.5 in).
+Write a `build.js` with pptxgenjs (`pptx.layout = "LAYOUT_WIDE"`, 13.333 × 7.5 in) and run it with `NODE_PATH=$(npm root -g) node build.js` (Windows PowerShell: `$env:NODE_PATH = (npm root -g); node build.js`). One function per layout; slides, notes and timings keyed by slide ID.
 
 - **Design:** one accent color plus neutrals; consistent master layouts; large figures over bullet walls; one message per slide in the title.
 - **Figures from PDFs:** render pages at 300–400 dpi (`pdftoppm`) and crop; or extract embedded photos with `pdfimages`. Cite the source under each figure.
 - **Video:** embed the user's own screen recording with a poster frame; caption the source. `scripts/animate.py` makes it autoplay muted and loop when the slide opens (verify in WPS; support varies).
 - **Click animations:** name shapes `a1_xxx`, `a2_xxx`, … (same number = appears on the same click). `scripts/animate.py` adds fade transitions and fade-in click sequences.
 - **Speaker notes:** bilingual, short spoken sentences. Mark each click as `[CLICK]` / `【点击】`; the number of markers must equal the number of click groups on that slide. Run `scripts/fixnotes.py` so each line is its own paragraph (otherwise WPS shows one block).
+- **Compatibility rules (PowerPoint + WPS):**
+    - Fonts: Latin text in Arial, Calibri or Cambria. Chinese text in Microsoft YaHei (微软雅黑) or DengXian (等线), which normally come with Office and WPS (the compat test deck confirms this on a given computer). Run `scripts/fix_fonts.py` so Chinese never falls back to each app's own default.
+    - Images: PNG or JPG only (no WebP, SVG, GIF, HEIC). Embed at the size shown; keep the deck under 100 MB.
+    - Video: MP4 with H.264, always with a poster image. Convert with `ffmpeg -i in.mov -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart out.mp4`. Autoplay works in PowerPoint; in WPS, tell the user to check it and to click the video if it doesn't start.
+    - Animation: only fade entrances and fade transitions (what `animate.py` writes). No motion paths, morph, 3D or triggers.
+    - No embedded fonts, macros, SmartArt, OLE objects or linked files. Text stays editable text, not pictures of text.
+    - `scripts/compat_test.js` builds a 7-slide test deck (fonts, notes, clicks, video, logo, transitions) for checking a new machine or app version.
 - **School logo:** top-right of every slide, cut out from its white background. `scripts/logo_cutout.py` makes a transparent color version and a white version; `scripts/add_logo.py` picks color or white per slide from the background brightness and nudges overlapping titles. Users supply their own logo file; do not redistribute it.
 
 Pipeline:
@@ -120,7 +139,8 @@ Pipeline:
 node build.js                                   # -> deck.pptx
 python scripts/animate.py deck.pptx deck_anim.pptx [--video-ms 5000]
 python scripts/fixnotes.py deck_anim.pptx deck_notes.pptx
-python scripts/add_logo.py deck_notes.pptx final.pptx --color logo_color.png --white logo_white.png
+python scripts/fix_fonts.py deck_notes.pptx deck_fonts.pptx [--cjk "Microsoft YaHei"]
+python scripts/add_logo.py deck_fonts.pptx final.pptx --color logo_color.png --white logo_white.png
 python scripts/check_deck.py final.pptx --minutes 8
 ```
 
@@ -128,15 +148,15 @@ Never pipe these scripts into `head`; a broken pipe can truncate the output file
 
 ## Step 5 — QA
 
-- Render: `soffice --headless --convert-to pdf`, then `pdftoppm -r 50` and check a contact sheet for overflow, overlap and the logo on every slide.
-- Run the pptx skill's `validate.py`. If it reports an undeclared `jpg` extension, add `<Default Extension="jpg" ContentType="image/jpeg"/>` to `[Content_Types].xml`.
-- Run `python scripts/check_deck.py final.pptx --minutes <limit>`. It fails if a slide's `[CLICK]` markers don't match its click steps, a slide has no notes, or the spoken time is over 90% of the limit (it says how many words to cut).
+- Render (if LibreOffice is installed): `soffice --headless --convert-to pdf`, then `pdftoppm -r 50` and check a contact sheet for overflow, overlap and the logo on every slide. LibreOffice is only a preview; PowerPoint and WPS are the real targets.
+- Confirm the file opens: `python -c "from pptx import Presentation; Presentation('final.pptx')"`. If your environment has a pptx validator, run it too. If a `jpg` image is reported as undeclared, add `<Default Extension="jpg" ContentType="image/jpeg"/>` to `[Content_Types].xml`.
+- Run `python scripts/check_deck.py final.pptx --minutes <limit>`. It fails if a slide's `[CLICK]` markers don't match its click steps, a slide has no notes, or the spoken time is over 90% of the limit (it says how many words to cut). It also warns about anything PowerPoint or WPS may not show the same way: Chinese text without a Chinese font, WebP/SVG/GIF images, non-H.264 video, files over 100 MB.
 - Instructor's required items are on the opening slides.
 
 ## Step 6 — Deliver
 
 - Save the .pptx into the user's connected folder (or send it in chat).
-- Tell them how to use presenter mode (WPS: 放映 → 演讲者视图 / 设置放映方式 → 显示演讲者视图; PowerPoint: Slide Show → Use Presenter View).
+- Tell them how to use presenter mode (WPS: 放映 → 设置放映方式 → 显示演讲者视图; PowerPoint: Slide Show → Use Presenter View) and to rehearse once in the app they will present with.
 - Offer: notes as plain text, a rehearsal run-through, or Q&A prep (Step 7).
 
 ## Step 7 — Q&A prep (offer after every deck; do it when asked)
